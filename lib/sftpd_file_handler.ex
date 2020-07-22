@@ -1,13 +1,19 @@
 defmodule Exsftpd.SftpFileHandler do
+  def file_handler_spec(options) do
+    {__MODULE__, options}
+  end
+
   defp user_path(path, state) do
     Path.join(state[:root_path], path)
   end
 
   defp on_event({event_name, meta}, state) do
+    args = [{event_name, state[:user], meta}]
+
     case state[:event_handler] do
+      {module, fun} -> apply(module, fun, args)
+      fun when is_function(fun, 1) -> apply(fun, args)
       nil -> nil
-      {module, fun} -> apply(module, fun, [{event_name, state[:user], meta}])
-      handler -> handler.({event_name, state[:user], meta})
     end
   end
 
@@ -23,90 +29,117 @@ defmodule Exsftpd.SftpFileHandler do
     end
   end
 
-  def close(io_device, state) do
-    after_event({:close, get_file_info(io_device)}, state, {:file.close(io_device), state})
+  @file_functions [
+    :delete,
+    :del_dir,
+    :list_dir,
+    :make_dir,
+    :read_link,
+    :read_link_info,
+    :read_file_info
+  ]
+  defp module_for_operation(operation) do
+    case operation do
+      operation when operation in [:is_dir] -> :filelib
+      operation when operation in @file_functions -> :file
+    end
+  end
+
+  # run operation on `:file` or `:filelib` module with the given path
+  defp simple_file_operation_on_path(operation, path, state) do
+    full_path = user_path(path, state)
+    return = {apply(module_for_operation(operation), operation, [full_path]), state}
+    after_event({operation, path}, state, return)
   end
 
   def delete(path, state) do
-    after_event({:delete, path}, state, {:file.delete(user_path(path, state)), state})
+    simple_file_operation_on_path(:delete, path, state)
+  end
+
+  def make_dir(path, state) do
+    simple_file_operation_on_path(:make_dir, path, state)
+  end
+
+  def list_dir(path, state) do
+    simple_file_operation_on_path(:list_dir, path, state)
+  end
+
+  def is_dir(path, state) do
+    simple_file_operation_on_path(:is_dir, path, state)
   end
 
   def del_dir(path, state) do
-    after_event({:del_dir, path}, state, {:file.del_dir(user_path(path, state)), state})
-  end
-
-  def get_cwd(state) do
-    {:file.get_cwd(), state}
-  end
-
-  def is_dir(abs_path, state) do
-    {:filelib.is_dir(user_path(abs_path, state)), state}
-  end
-
-  def list_dir(abs_path, state) do
-    {:file.list_dir(user_path(abs_path, state)), state}
-  end
-
-  def make_dir(dir, state) do
-    after_event({:make_dir, dir}, state, {:file.make_dir(user_path(dir, state)), state})
-  end
-
-  def make_symlink(path2, path, state) do
-    after_event(
-      {:make_symlink, {path2, path}},
-      state,
-      {:file.make_symlink(user_path(path2, state), user_path(path, state)), state}
-    )
-  end
-
-  def open(path, flags, state) do
-    {case :file.open(user_path(path, state), flags) do
-       {:ok, pid} ->
-         on_event({:open, {get_file_info(pid), path, flags}}, state)
-         {:ok, pid}
-
-       other ->
-         other
-     end, state}
-  end
-
-  def position(io_device, offs, state) do
-    {:file.position(io_device, offs), state}
-  end
-
-  def read(io_device, len, state) do
-    after_event({:read, get_file_info(io_device)}, state, {:file.read(io_device, len), state})
+    simple_file_operation_on_path(:del_dir, path, state)
   end
 
   def read_link(path, state) do
-    {:file.read_link(user_path(path, state)), state}
+    simple_file_operation_on_path(:read_link, path, state)
   end
 
   def read_link_info(path, state) do
-    {:file.read_link_info(user_path(path, state)), state}
+    simple_file_operation_on_path(:read_link_info, path, state)
   end
 
   def read_file_info(path, state) do
-    {:file.read_file_info(user_path(path, state)), state}
+    simple_file_operation_on_path(:read_file_info, path, state)
+  end
+
+  def get_cwd(state) do
+    task = {:cwd, []}
+    result = {:file.get_cwd(), state}
+    after_event(task, state, result)
+  end
+
+  def make_symlink(path2, path, state) do
+    task = {:make_symlink, {path2, path}}
+    result = {:file.make_symlink(user_path(path2, state), user_path(path, state)), state}
+    after_event(task, state, result)
+  end
+
+  def open(path, flags, state) do
+    case :file.open(user_path(path, state), flags) do
+      {:ok, pid} ->
+        on_event({:open, {get_file_info(pid), path, flags}}, state)
+        {{:ok, pid}, state}
+
+      other ->
+        {other, state}
+    end
+  end
+
+  def close(io_device, state) do
+    task = {:close, get_file_info(io_device)}
+    result = {:file.close(io_device), state}
+    after_event(task, state, result)
+  end
+
+  def position(io_device, offs, state) do
+    task = {:position, {io_device, offs}}
+    result = {:file.position(io_device, offs), state}
+    after_event(task, state, result)
+  end
+
+  def read(io_device, len, state) do
+    task = {:read, get_file_info(io_device)}
+    result = {:file.read(io_device, len), state}
+    after_event(task, state, result)
   end
 
   def rename(path, path2, state) do
-    after_event(
-      {:rename, {path, path2}},
-      state,
-      {:file.rename(user_path(path, state), user_path(path2, state)), state}
-    )
+    task = {:rename, {path, path2}}
+    result = {:file.rename(user_path(path, state), user_path(path2, state)), state}
+    after_event(task, state, result)
   end
 
   def write(io_device, data, state) do
-    after_event({:write, get_file_info(io_device)}, state, {:file.write(io_device, data), state})
+    task = {:write, get_file_info(io_device)}
+    result = {:file.write(io_device, data), state}
+    after_event(task, state, result)
   end
 
   def write_file_info(path, info, state) do
-    after_event(
-      {:write_file_info, {path, info}},
-      state,
-      {:file.write_file_info(user_path(path, state), info), state}
-    )
+    task = {:write_file_info, {path, info}}
+    result = {:file.write_file_info(user_path(path, state), info), state}
+    after_event(task, state, result)
   end
 end

@@ -8,7 +8,7 @@ defmodule Exsftpd.SftpdChannel do
   Record.defrecord(:ssh_xfer, Record.extract(:ssh_xfer, from_lib: "ssh/src/ssh_xfer.erl"))
 
   def subsystem_spec(options) do
-    {'sftp', {Exsftpd.SftpdChannel, options}}
+    {'sftp', {__MODULE__, options}}
   end
 
   def init(options) do
