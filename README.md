@@ -32,6 +32,17 @@ config :exsftpd, Exsftpd.Server,
 
 ```
 
+Start the server with options in your own supervision tree:
+
+```
+options = Application.get_env(:exsftpd, Exsftpd.Server)
+
+children = [
+  {Exsftpd.Server, options},
+  …
+]
+```
+
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at [https://hexdocs.pm/exsftpd](https://hexdocs.pm/exsftpd).

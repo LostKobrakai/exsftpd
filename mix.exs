@@ -5,8 +5,8 @@ defmodule Exsftpd.MixProject do
     [
       app: :exsftpd,
       description: description(),
-      version: "0.9.0",
-      elixir: "~> 1.4 or ~> 1.5 or ~> 1.6 or ~> 1.7 or ~> 1.8 or ~> 1.9",
+      version: "0.10.0",
+      elixir: "~> 1.4",
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -18,18 +18,9 @@ defmodule Exsftpd.MixProject do
     "SFTP server with separate root directories for each user"
   end
 
-  def module() do
-    if Mix.env() == :test do
-      []
-    else
-      {Exsftpd, []}
-    end
-  end
-
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      mod: module(),
       extra_applications: [:logger, :ssh]
     ]
   end
